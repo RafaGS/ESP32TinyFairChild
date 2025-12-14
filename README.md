@@ -1,4 +1,8 @@
 # Tiny Fairchild Channel F port ESP32
+Updated for ESP32 Arduino Core 3.3 and IDF v5.5.
+
+More info: [https://minibots.wordpress.com/2025/12/14/emulador-de-fairchild-channel-f-con-lilygo-ttgo-vga32/]
+
 <center><img src='https://raw.githubusercontent.com/rpsubc8/ESP32TinyFairChild/main/preview/previewFairchild.gif'></center>
 <ul>
  <li><b>Discord: </b><a href='https://discord.gg/Spe9buSCa5'>https://discord.gg/Spe9buSCa5</a></li>
