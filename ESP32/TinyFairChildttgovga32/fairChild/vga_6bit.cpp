@@ -71,9 +71,11 @@
 #include <soc/i2s_reg.h>
 #include <soc/i2s_struct.h>
 #include <soc/io_mux_reg.h>
+#include <soc/gpio_struct.h>
 #include <driver/rtc_io.h>
 #include <driver/gpio.h>
 #include <driver/periph_ctrl.h>
+#include <rom/gpio.h>
 
 #if ARDUINO_ARCH_ESP32   // compiling under Arduino Core
 #include <Arduino.h>
@@ -352,9 +354,10 @@ static void setup_i2s_output(const unsigned char *pin_map)
    unsigned char pin = pin_map[i];
    if (pin != 255)
    {
-    PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[pin], PIN_FUNC_GPIO);
+    esp_rom_gpio_pad_select_gpio(pin);
     gpio_set_direction((gpio_num_t) pin, (gpio_mode_t) GPIO_MODE_DEF_OUTPUT);
-    gpio_matrix_out(pin, I2S1O_DATA_OUT0_IDX + i, false, false);
+    // Connect I2S output to GPIO using ROM function for GPIO matrix routing
+    esp_rom_gpio_connect_out_signal(pin, I2S1O_DATA_OUT0_IDX + i, false, false);
    }
   }
   periph_module_enable(PERIPH_I2S1_MODULE);
@@ -375,21 +378,19 @@ static void setup_i2s_output(const unsigned char *pin_map)
   I2S1.sample_rate_conf.tx_bits_mod = 8;
   
   // clock setup
-  long freq = pixel_clock * 2;
-  int sdm, sdmn;
-  int odir = -1;
-  do {	
-    odir++;
-    sdm  = long((double(freq) / (20000000. / (odir + 2    ))) * 0x10000) - 0x40000;
-    sdmn = long((double(freq) / (20000000. / (odir + 2 + 1))) * 0x10000) - 0x40000;
-  } while(sdm < 0x8c0ecL && odir < 31 && sdmn < 0xA1fff);
-  if (sdm > 0xA1fff) sdm = 0xA1fff;
-  rtc_clk_apll_enable(true, sdm & 0xff, (sdm >> 8) & 0xff, sdm >> 16, odir);
+  // For different pixel clock frequencies in IDF v5.5
+  // Calculate appropriate clock divisor based on pixel clock
+  int clk_div;
+  if (pixel_clock < 10000000) clk_div = 10;      // 9MHz->10
+  else if (pixel_clock < 20000000) clk_div = 8;  // 12.6MHz->8
+  else clk_div = 4;                               // 25MHz->4
+  
+  rtc_clk_apll_enable(true);
 
   I2S1.clkm_conf.val = 0;
   I2S1.clkm_conf.clka_en = 1;
-  I2S1.clkm_conf.clkm_div_num = 2;
-  I2S1.clkm_conf.clkm_div_a = 1;
+  I2S1.clkm_conf.clkm_div_num = clk_div;
+  I2S1.clkm_conf.clkm_div_a = 0;
   I2S1.clkm_conf.clkm_div_b = 0;
   I2S1.sample_rate_conf.tx_bck_div_num = 1;
 
@@ -471,7 +472,10 @@ void vga_init(const unsigned char *pin_map, const int *mode, bool double_buffere
 {
   //vga_mode = &mode;
   
+  Serial.println("VGA: Initializing VGA subsystem...");
+  
   VgaMode_VgaMode(mode[0],mode[1],mode[2],mode[3],mode[4],mode[5],mode[6],mode[7],mode[8],mode[9],mode[10],mode[11]);
+  Serial.println("VGA: Video mode configured");
 
   num_framebuffers = (double_buffered) ? 2 : 1;
   for (int i = 0; i < num_framebuffers; i++) {
@@ -481,12 +485,17 @@ void vga_init(const unsigned char *pin_map, const int *mode, bool double_buffere
   back_framebuffer = (active_framebuffer+1) % num_framebuffers;
   clear_framebuffer(framebuffer[active_framebuffer], 0);
   clear_framebuffer(framebuffer[back_framebuffer], 0);
+  Serial.println("VGA: Framebuffers allocated");
 
   allocate_vga_i2s_buffers();
   set_vga_i2s_active_framebuffer(framebuffer[active_framebuffer]);
+  Serial.println("VGA: I2S buffers allocated");
 
   setup_i2s_output(pin_map);  
+  Serial.println("VGA: I2S output configured");
+  
   start_i2s_output();
+  Serial.println("VGA: I2S output started - signal should be active now");
 
 #if 0
   print("sync_bits=-x%x", vga_mode->sync_bits());
@@ -617,7 +626,7 @@ const VgaMode vga_mode_288x240(24, 48, 40, 288,  11, 2,  31, 480,  2,   12587500
 const VgaMode vga_mode_240x240(48, 48, 64, 240,  11, 2,  31, 480,  2,   12587500, 1, 1);
 
 //JJ Extra esta cambiado vp y vh
-const VgaMode vga_mode_320x200(8,48,24,320,12,2,35,400,2,12587500,0,1); //funciona con 0,1
+const VgaMode vga_mode_320x200(8,48,24,320,12,2,35,400,2,12587500,0,1); //funciona con 0,1 - v_div duplica 200 líneas a 400
 //const VgaMode vga_mode_320x200(8, 48, 24, 320, 12, 2, 35, 400, 2, 12587500, 1, 1); //Se ve con 1,1
 //hfront hsync hback pixels vfront vsync vback lines divy pixelclock hpolaritynegative vpolaritynegative
 const VgaMode vga_mode_200x150(6,18,32,200, 1,2,22,600,4,9000000, 0,0);
@@ -880,9 +889,10 @@ static void setup_i2s_output(const unsigned char *pin_map)
   periph_module_enable(PERIPH_I2S1_MODULE);
   for (int i = 0; i < 8; i++) {
     int pin = pin_map[i];
-    PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[pin], PIN_FUNC_GPIO);
+    esp_rom_gpio_pad_select_gpio(pin);
     gpio_set_direction((gpio_num_t) pin, (gpio_mode_t) GPIO_MODE_DEF_OUTPUT);
-    gpio_matrix_out(pin, I2S1O_DATA_OUT0_IDX + i, false, false);
+    // Connect I2S output to GPIO using ROM function for GPIO matrix routing
+    esp_rom_gpio_connect_out_signal(pin, I2S1O_DATA_OUT0_IDX + i, false, false);
   }
   periph_module_enable(PERIPH_I2S1_MODULE);
 
@@ -902,21 +912,19 @@ static void setup_i2s_output(const unsigned char *pin_map)
   I2S1.sample_rate_conf.tx_bits_mod = 8;
   
   // clock setup
-  long freq = vga_mode->pixel_clock * 2;
-  int sdm, sdmn;
-  int odir = -1;
-  do {	
-    odir++;
-    sdm  = long((double(freq) / (20000000. / (odir + 2    ))) * 0x10000) - 0x40000;
-    sdmn = long((double(freq) / (20000000. / (odir + 2 + 1))) * 0x10000) - 0x40000;
-  } while(sdm < 0x8c0ecL && odir < 31 && sdmn < 0xA1fff);
-  if (sdm > 0xA1fff) sdm = 0xA1fff;
-  rtc_clk_apll_enable(true, sdm & 0xff, (sdm >> 8) & 0xff, sdm >> 16, odir);
+  // Use fixed divisor that works for both modes in IDF v5.5
+  // Dynamically choose based on pixel clock frequency
+  int clk_div;
+  if (vga_mode->pixel_clock < 10000000) clk_div = 10;      // 9MHz->10
+  else if (vga_mode->pixel_clock < 20000000) clk_div = 8;  // 12.6MHz->8
+  else clk_div = 4;                                         // 25MHz->4
+  
+  rtc_clk_apll_enable(true);
 
   I2S1.clkm_conf.val = 0;
   I2S1.clkm_conf.clka_en = 1;
-  I2S1.clkm_conf.clkm_div_num = 2;
-  I2S1.clkm_conf.clkm_div_a = 1;
+  I2S1.clkm_conf.clkm_div_num = clk_div;
+  I2S1.clkm_conf.clkm_div_a = 0;
   I2S1.clkm_conf.clkm_div_b = 0;
   I2S1.sample_rate_conf.tx_bck_div_num = 1;
 

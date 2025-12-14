@@ -21,7 +21,7 @@ const int VgaMode_vga_mode_200x150[12]={
 };
 
 const int VgaMode_vga_mode_320x200[12]={
- 8,48,24,320,12,2,35,400,2,12587500,0,1 //funciona con 0,1
+ 8,48,24,320,12,2,35,400,2,12587500,0,1 //funciona con 0,1 - v_div duplica 200 a 400
 };
 
 

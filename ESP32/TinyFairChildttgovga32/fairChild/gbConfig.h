@@ -22,8 +22,8 @@
 
  
  //Selecionar solo uno (use_lib_200x150 o use_lib_320x200)
- #define use_lib_200x150
- //#define use_lib_320x200
+ //#define use_lib_200x150
+ #define use_lib_320x200
 
  //Video colors (8 colores es DAC 3 bits)
  //#define use_lib_vga8colors
@@ -58,7 +58,7 @@
   #define gb_add_offset_x 8
   #define gb_add_offset_y 30
  #else
-  #define gb_add_offset_x 20 
-  #define gb_add_offset_y 40
+  #define gb_add_offset_x 0 
+  #define gb_add_offset_y 0
  #endif
 #endif
